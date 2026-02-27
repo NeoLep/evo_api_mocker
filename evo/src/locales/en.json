@@ -22,7 +22,7 @@
   "addDatabaseConnection": "Add Database Connection",
   "connectionName": "Connection Name",
   "connectionUrl": "Connection URL (sqlite/mysql/postgres)",
-  "connectionExamples": "Examples: sqlite://db.sqlite, mysql://user:pass@localhost/db, postgres://user:pass@localhost/db",
+  "connectionExamples": "Examples:",
   "connectAndSave": "Connect & Save",
   "testConnection": "Test Connection",
   "activeConnections": "Active Connections (Saved)",
@@ -60,5 +60,17 @@
   "restartServerConfirm": "Do you want to restart the server now to apply changes?",
   "serverRestarted": "Server restarted successfully",
   "serverRestartFailed": "Failed to restart server: {error}",
-  "settingsSaveFailed": "Failed to save settings: {error}"
+  "settingsSaveFailed": "Failed to save settings: {error}",
+  "confirm": "Confirm",
+  "confirmTitle": "Confirmation",
+  "logs": "Logs",
+  "requestLogs": "Request Logs",
+  "clearLogs": "Clear Logs",
+  "noLogs": "No requests yet.",
+  "confirmClearLogs": "Are you sure you want to clear all logs?",
+  "logsCleared": "Logs cleared",
+  "searchLogs": "Search logs (Path/Method/Status)...",
+  "all": "All",
+  "success": "Success (2xx/3xx)",
+  "error": "Error (4xx/5xx)"
 }

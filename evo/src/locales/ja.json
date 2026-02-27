@@ -22,7 +22,7 @@
   "addDatabaseConnection": "データベース接続を追加",
   "connectionName": "接続名",
   "connectionUrl": "接続 URL (sqlite/mysql/postgres)",
-  "connectionExamples": "例: sqlite://db.sqlite, mysql://user:pass@localhost/db, postgres://user:pass@localhost/db",
+  "connectionExamples": "例:",
   "connectAndSave": "接続して保存",
   "testConnection": "接続テスト",
   "activeConnections": "アクティブな接続 (保存済み)",
@@ -60,5 +60,17 @@
   "restartServerConfirm": "変更を適用するためにサーバーを再起動しますか？",
   "serverRestarted": "サーバーが再起動しました",
   "serverRestartFailed": "サーバーの再起動に失敗しました: {error}",
-  "settingsSaveFailed": "設定の保存に失敗しました: {error}"
+  "settingsSaveFailed": "設定の保存に失敗しました: {error}",
+  "confirm": "確認",
+  "confirmTitle": "確認",
+  "logs": "ログ",
+  "requestLogs": "リクエストログ",
+  "clearLogs": "ログをクリア",
+  "noLogs": "リクエストはまだありません。",
+  "confirmClearLogs": "すべてのログをクリアしてもよろしいですか？",
+  "logsCleared": "ログがクリアされました",
+  "searchLogs": "ログを検索 (パス/メソッド/ステータス)...",
+  "all": "すべて",
+  "success": "成功 (2xx/3xx)",
+  "error": "エラー (4xx/5xx)"
 }

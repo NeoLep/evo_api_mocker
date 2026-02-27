@@ -22,7 +22,7 @@
   "addDatabaseConnection": "添加数据库连接",
   "connectionName": "连接名称",
   "connectionUrl": "连接 URL (sqlite/mysql/postgres)",
-  "connectionExamples": "示例: sqlite://db.sqlite, mysql://user:pass@localhost/db, postgres://user:pass@localhost/db",
+  "connectionExamples": "示例:",
   "connectAndSave": "连接并保存",
   "testConnection": "测试连接",
   "activeConnections": "活跃连接 (已保存)",
@@ -60,5 +60,17 @@
   "restartServerConfirm": "是否立即重启服务器以应用更改？",
   "serverRestarted": "服务器重启成功",
   "serverRestartFailed": "服务器重启失败: {error}",
-  "settingsSaveFailed": "保存设置失败: {error}"
+  "settingsSaveFailed": "保存设置失败: {error}",
+  "confirm": "确认",
+  "confirmTitle": "确认操作",
+  "logs": "日志",
+  "requestLogs": "请求日志",
+  "clearLogs": "清空日志",
+  "noLogs": "暂无请求记录。",
+  "confirmClearLogs": "确定要清空所有日志吗？",
+  "logsCleared": "日志已清空",
+  "searchLogs": "搜索日志 (路径/方法/状态码)...",
+  "all": "全部",
+  "success": "成功 (2xx/3xx)",
+  "error": "错误 (4xx/5xx)"
 }

@@ -1,7 +1,7 @@
 mod server;
-use server::{MockApi, AppState, ServerConfig};
+use server::{MockApi, AppState, ServerConfig, RequestLog};
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::fs;
 use tauri::{State, Manager, AppHandle};
@@ -269,6 +269,19 @@ fn update_mock_api(app_handle: AppHandle, state: State<'_, AppState>, id: String
 use tauri::Emitter; // For emit
 use tokio::sync::broadcast;
 
+#[tauri::command]
+async fn get_request_logs(state: State<'_, AppState>) -> Result<Vec<RequestLog>, String> {
+    let logs = state.logs.lock().map_err(|e| e.to_string())?;
+    Ok(logs.iter().cloned().collect())
+}
+
+#[tauri::command]
+async fn clear_request_logs(state: State<'_, AppState>) -> Result<(), String> {
+    let mut logs = state.logs.lock().map_err(|e| e.to_string())?;
+    logs.clear();
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mocks = Arc::new(Mutex::new(HashMap::new()));
@@ -279,10 +292,15 @@ pub fn run() {
     // Broadcast channel for server shutdown
     let (shutdown_tx, _shutdown_rx) = broadcast::channel(1);
     
+    // Request logs
+    let logs = Arc::new(Mutex::new(VecDeque::new()));
+
     let app_state = AppState { 
         mocks: mocks.clone(),
         db_connections: db_connections.clone(),
         config: config.clone(),
+        logs: logs.clone(),
+        app_handle: Arc::new(Mutex::new(None)),
     };
     
     // We need to clone app_state to pass to the server task
@@ -291,7 +309,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(app_state)
+        .manage(app_state.clone()) // Pass clone because we use it in setup too
         .manage(shutdown_tx) // Manage the shutdown sender
         .invoke_handler(tauri::generate_handler![
             add_mock_api, 
@@ -306,9 +324,21 @@ pub fn run() {
             update_server_config,
             restart_server,
             stop_server,
-            start_server_cmd
+            start_server_cmd,
+            get_request_logs,
+            clear_request_logs
         ])
         .setup(move |app| {
+            // Set app handle in state
+            // IMPORTANT: We must use the state managed by Tauri, not the local app_state variable
+            // because the local variable is a clone and won't be updated for commands to see.
+            // Wait, AppState fields are Arcs, so cloning the struct shares the inner data.
+            // So updating app_state.app_handle works if it's an Arc<Mutex<Option<AppHandle>>>.
+            
+            if let Ok(mut handle) = app_state.app_handle.lock() {
+                *handle = Some(app.handle().clone());
+            }
+
             // Manually install SQLx drivers
             sqlx::any::install_default_drivers();
             

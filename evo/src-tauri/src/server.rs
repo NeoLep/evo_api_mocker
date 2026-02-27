@@ -3,10 +3,10 @@ use axum::{
     http::{Method, StatusCode, Uri, HeaderMap},
     response::{IntoResponse, Response, Json, Html},
     Router,
-    body::Body,
+    body::{Body, to_bytes},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{collections::{HashMap, VecDeque}, sync::{Arc, Mutex}, time::{SystemTime, UNIX_EPOCH, Instant}};
 use tower_http::cors::CorsLayer;
 use boa_engine::{Context, Source};
 use sqlx::{Pool, Any};
@@ -21,6 +21,18 @@ pub struct MockApi {
     pub response_type: String, // "json", "html", "raw", "js"
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct RequestLog {
+    pub id: String,
+    pub method: String,
+    pub path: String,
+    pub status_code: u16,
+    pub duration_ms: u64,
+    pub timestamp: u64,
+    pub request_body: Option<String>,
+    pub response_body: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     // Key format: "METHOD /path"
@@ -28,6 +40,10 @@ pub struct AppState {
     // Key: Connection ID (name)
     pub db_connections: Arc<Mutex<HashMap<String, Pool<Any>>>>,
     pub config: Arc<Mutex<ServerConfig>>,
+    // Request Logs (Max 100)
+    pub logs: Arc<Mutex<VecDeque<RequestLog>>>,
+    // App handle for emitting events
+    pub app_handle: Arc<Mutex<Option<tauri::AppHandle>>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -88,6 +104,67 @@ async fn handler(
     headers: HeaderMap,
     body: String,
 ) -> Response {
+    let start_time = Instant::now();
+    let request_body_clone = body.clone();
+    
+    // Process request
+    let response = process_request(state.clone(), method.clone(), uri.clone(), headers, body).await;
+    
+    // Log request
+    let duration = start_time.elapsed().as_millis() as u64;
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+    let status_code = response.status().as_u16();
+    
+    // Try to capture response body for logging
+    // Note: This consumes the response body, so we need to reconstruct it.
+    // For now, let's just log "Response body logged" placeholder or try to peek if possible.
+    // Actually, we can read the bytes, store them, and create a new body.
+    
+    let (parts, body) = response.into_parts();
+    let bytes = to_bytes(body, usize::MAX).await.unwrap_or_default();
+    let response_body_str = String::from_utf8(bytes.to_vec()).ok();
+    
+    let log = RequestLog {
+        id: uuid::Uuid::new_v4().to_string(),
+        method: method.to_string(),
+        path: uri.path().to_string(),
+        status_code,
+        duration_ms: duration,
+        timestamp,
+        request_body: Some(request_body_clone),
+        response_body: response_body_str.clone(),
+    };
+    
+    // Store log
+    if let Ok(mut logs) = state.logs.lock() {
+        logs.push_front(log.clone());
+        if logs.len() > 100 {
+            logs.pop_back();
+        }
+    }
+    
+    // Emit event
+    if let Ok(handle_guard) = state.app_handle.lock() {
+        if let Some(app_handle) = handle_guard.as_ref() {
+             use tauri::Emitter;
+             if let Err(e) = app_handle.emit("new-request-log", log.clone()) {
+                 println!("Failed to emit log: {}", e);
+             }
+        }
+    }
+    
+    // Reconstruct response
+    let response = Response::from_parts(parts, Body::from(bytes));
+    response
+}
+
+async fn process_request(
+    state: AppState,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: String,
+) -> Response {
     let path = uri.path();
     let key = format!("{} {}", method, path);
     
@@ -126,7 +203,6 @@ async fn handler(
                     v.to_str().ok().map(|val| (k.to_string(), val.to_string()))
                 }).collect();
                 let db_connections = state.db_connections.clone();
-                let response_body = mock.response_body.clone();
                 
                 let result = tokio::task::spawn_blocking(move || {
                     let mut context = Context::default();
@@ -231,7 +307,7 @@ async fn handler(
                         NativeFunction::from_closure(move |_this, args, context| -> JsResult<JsValue> {
                             let conn_name = args.get(0).and_then(|v| v.as_string()).ok_or_else(|| JsError::from_opaque(JsValue::new(boa_engine::JsString::from("Missing connection name"))))?;
                             let sql = args.get(1).and_then(|v| v.as_string()).ok_or_else(|| JsError::from_opaque(JsValue::new(boa_engine::JsString::from("Missing SQL"))))?;
-                            let params_val = args.get(2); // Optional params array
+                            let _params_val = args.get(2); // Optional params array
     
                             let conn_name_str = conn_name.to_std_string().unwrap();
                             let sql_str = sql.to_std_string().unwrap();
@@ -272,25 +348,25 @@ async fn handler(
                                              use sqlx::{Row, Column};
                                              let mut row_obj = serde_json::Map::new();
                                              for col in row.columns() {
-                                                 let name = col.name();
-                                                 let val_json = if let Ok(v) = row.try_get::<String, _>(name) {
-                                                 serde_json::Value::String(v)
-                                             } else if let Ok(v) = row.try_get::<i64, _>(name) {
-                                                 serde_json::Value::Number(v.into())
-                                             } else if let Ok(v) = row.try_get::<f64, _>(name) {
-                                                 serde_json::Number::from_f64(v).map(serde_json::Value::Number).unwrap_or(serde_json::Value::Null)
-                                             } else if let Ok(v) = row.try_get::<bool, _>(name) {
-                                                 serde_json::Value::Bool(v)
-                                             // Any driver doesn't support i8 directly, map to i16 or i32
-                                             } else if let Ok(v) = row.try_get::<i16, _>(name) {
-                                                 serde_json::Value::Number(v.into())
-                                             } else if let Ok(v) = row.try_get::<i32, _>(name) {
-                                                 serde_json::Value::Number(v.into())
-                                             } else {
-                                                 serde_json::Value::Null
-                                             };
-                                                 row_obj.insert(name.to_string(), val_json);
-                                             }
+                                                let name = col.name();
+                                                let val_json = if let Ok(v) = row.try_get::<String, _>(name) {
+                                                serde_json::Value::String(v)
+                                            } else if let Ok(v) = row.try_get::<i64, _>(name) {
+                                                serde_json::Value::Number(v.into())
+                                            } else if let Ok(v) = row.try_get::<f64, _>(name) {
+                                                serde_json::Number::from_f64(v).map(serde_json::Value::Number).unwrap_or(serde_json::Value::Null)
+                                            } else if let Ok(v) = row.try_get::<bool, _>(name) {
+                                                serde_json::Value::Bool(v)
+                                            // Any driver doesn't support i8 directly, map to i16 or i32
+                                            } else if let Ok(v) = row.try_get::<i16, _>(name) {
+                                                serde_json::Value::Number(v.into())
+                                            } else if let Ok(v) = row.try_get::<i32, _>(name) {
+                                                serde_json::Value::Number(v.into())
+                                            } else {
+                                                serde_json::Value::Null
+                                            };
+                                                row_obj.insert(name.to_string(), val_json);
+                                            }
                                              json_rows.push(serde_json::Value::Object(row_obj));
                                          }
                                          Ok(json_rows)
